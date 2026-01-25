@@ -16,7 +16,6 @@ class CryptoDatabase:
                  user='dbuser', password='dbuser_pw_01!'):
         """Initialize database connection."""
         self.host = host
-        self.port = port
         self.database = database
         self.user = user
         self.password = password
