@@ -84,7 +84,7 @@ def create_features(df):
 class LiveTrader:
     """Live trading engine with paper money."""
     
-    def __init__(self, model_path, entry_threshold=0.85, profit_target=0.01, stop_loss=0.005):
+    def __init__(self, model_path, entry_threshold=0.85, profit_target=0.01, stop_loss=0.005, max_positions=5):
         """Initialize live trader."""
         # Load model
         model_data = joblib.load(model_path)
@@ -95,6 +95,7 @@ class LiveTrader:
         self.entry_threshold = entry_threshold
         self.profit_target = profit_target
         self.stop_loss = stop_loss
+        self.max_positions = max_positions  # Maximum number of open positions
         
         # State
         self.positions = {}
@@ -211,9 +212,10 @@ class LiveTrader:
                     if symbol in self.positions:
                         self._update_position(symbol, mid_price, prob, timestamp)
                     
-                    # Check for new entry
+                    # Check for new entry (only if we haven't reached max positions)
                     if symbol not in self.positions and prob >= self.entry_threshold:
-                        self._enter_position(symbol, mid_price, prob, timestamp)
+                        if len(self.positions) < self.max_positions:
+                            self._enter_position(symbol, mid_price, prob, timestamp)
                         
                 except Exception as e:
                     continue  # Skip problematic rows
@@ -236,7 +238,7 @@ class LiveTrader:
             'entry_balance': self.current_balance
         }
         
-        print(f"{GREEN}[BUY] {symbol} @ ${price:.6f} (prob: {probability:.2%}){RESET}")
+        print(f"{GREEN}[BUY] {symbol} @ ${price:.6f} (prob: {probability:.2%}) | Open: {len(self.positions)}/{self.max_positions}{RESET}")
     
     def _update_position(self, symbol, current_price, probability, timestamp):
         """Update existing position and check exit conditions."""
@@ -283,11 +285,18 @@ class LiveTrader:
         }
         self.trades.append(trade)
         
-        # Print trade result
+        # Calculate total profit/loss
+        total_pnl = self.current_balance - self.start_balance
+        total_return_pct = (self.current_balance / self.start_balance - 1) * 100
+        
+        # Print trade result with capital update
         if return_pct > 0:
             print(f"{GREEN}[SELL] {symbol} @ ${exit_price:.6f} | +{return_pct*100:.2f}% | {reason}{RESET}")
         else:
             print(f"{RED}[SELL] {symbol} @ ${exit_price:.6f} | {return_pct*100:.2f}% | {reason}{RESET}")
+        
+        # Print capital update
+        print(f"  Balance: ${self.current_balance:.2f} | PnL: ${total_pnl:+.2f} ({total_return_pct:+.2f}%) | Open: {len(self.positions)}/{self.max_positions}")
         
         del self.positions[symbol]
     
@@ -337,7 +346,7 @@ def main():
     
     # Initialize
     model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models/glitchcatcher_model_single.pkl')
-    trader = LiveTrader(model_path, entry_threshold=0.85, profit_target=0.01, stop_loss=0.005)
+    trader = LiveTrader(model_path, entry_threshold=0.85, profit_target=0.01, stop_loss=0.005, max_positions=5)
     
     # Connect to database
     db = CryptoDatabase()

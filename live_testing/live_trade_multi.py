@@ -85,7 +85,7 @@ class LiveTraderMulti:
     """Live trading engine with multi-task model."""
     
     def __init__(self, model_path, detection_threshold=0.7, persistence_threshold=0.5, 
-                 profit_target=0.01, stop_loss=0.005):
+                 profit_target=0.01, stop_loss=0.005, max_positions=5):
         """Initialize live trader."""
         # Load models
         model_data = joblib.load(model_path)
@@ -101,6 +101,7 @@ class LiveTraderMulti:
         self.persistence_threshold = persistence_threshold
         self.profit_target = profit_target
         self.stop_loss = stop_loss
+        self.max_positions = max_positions  # Maximum number of open positions
         
         # State
         self.positions = {}
@@ -216,10 +217,11 @@ class LiveTraderMulti:
                     if symbol in self.positions:
                         self._update_position(symbol, mid_price, det_prob, per_prob, timestamp)
                     
-                    # Check for new entry (both models must agree)
+                    # Check for new entry (both models must agree, and we haven't reached max positions)
                     if symbol not in self.positions:
                         if det_prob >= self.detection_threshold and per_prob >= self.persistence_threshold:
-                            self._enter_position(symbol, mid_price, det_prob, per_prob, timestamp)
+                            if len(self.positions) < self.max_positions:
+                                self._enter_position(symbol, mid_price, det_prob, per_prob, timestamp)
                             
                 except Exception as e:
                     continue  # Skip problematic rows
@@ -242,7 +244,7 @@ class LiveTraderMulti:
             'entry_balance': self.current_balance
         }
         
-        print(f"{GREEN}[BUY] {symbol} @ ${price:.6f} (det: {det_prob:.2%}, per: {per_prob:.2%}){RESET}")
+        print(f"{GREEN}[BUY] {symbol} @ ${price:.6f} (det: {det_prob:.2%}, per: {per_prob:.2%}) | Open: {len(self.positions)}/{self.max_positions}{RESET}")
     
     def _update_position(self, symbol, current_price, det_prob, per_prob, timestamp):
         """Update existing position and check exit conditions."""
@@ -286,10 +288,18 @@ class LiveTraderMulti:
         }
         self.trades.append(trade)
         
+        # Calculate total profit/loss
+        total_pnl = self.current_balance - self.start_balance
+        total_return_pct = (self.current_balance / self.start_balance - 1) * 100
+        
+        # Print trade result with capital update
         if return_pct > 0:
             print(f"{GREEN}[SELL] {symbol} @ ${exit_price:.6f} | +{return_pct*100:.2f}% | {reason}{RESET}")
         else:
             print(f"{RED}[SELL] {symbol} @ ${exit_price:.6f} | {return_pct*100:.2f}% | {reason}{RESET}")
+        
+        # Print capital update
+        print(f"  Balance: ${self.current_balance:.2f} | PnL: ${total_pnl:+.2f} ({total_return_pct:+.2f}%) | Open: {len(self.positions)}/{self.max_positions}")
         
         del self.positions[symbol]
     
@@ -340,7 +350,7 @@ def main():
     # Initialize
     model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models/glitchcatcher_model.pkl')
     trader = LiveTraderMulti(model_path, detection_threshold=0.7, persistence_threshold=0.5, 
-                            profit_target=0.01, stop_loss=0.005)
+                            profit_target=0.01, stop_loss=0.005, max_positions=5)
     
     # Connect to database
     db = CryptoDatabase()
