@@ -1,0 +1,136 @@
+"""
+Database connection for live testing
+Connects to MySQL database on Raspberry Pi
+"""
+
+import mysql.connector
+from mysql.connector import Error
+import pandas as pd
+from datetime import datetime, timedelta
+import time
+
+class CryptoDatabase:
+    """Database connection for crypto trading data."""
+    
+    def __init__(self, host='localhost', port=3306, database='crypto', 
+                 user='dbuser', password='dbuser_01'):
+        """Initialize database connection."""
+        self.host = host
+        self.port = port
+        self.database = database
+        self.user = user
+        self.password = password
+        self.connection = None
+        self.last_timestamp = None
+        
+    def connect(self):
+        """Connect to database."""
+        try:
+            self.connection = mysql.connector.connect(
+                host=self.host,
+                port=self.port,
+                database=self.database,
+                user=self.user,
+                password=self.password
+            )
+            if self.connection.is_connected():
+                return True
+        except Error as e:
+            print(f"Database connection error: {e}")
+            return False
+        return False
+    
+    def disconnect(self):
+        """Disconnect from database."""
+        if self.connection and self.connection.is_connected():
+            self.connection.close()
+    
+    def get_latest_history(self, limit=1000, since_timestamp=None):
+        """Get latest assets_history records."""
+        if not self.connection or not self.connection.is_connected():
+            if not self.connect():
+                return None
+        
+        try:
+            query = """
+                SELECT 
+                    asth_id, asth_symbol, asth_market, asth_symbolValue,
+                    asth_changedPercentage, asth_symbolValue_USD, asth_symbolValue_BTC,
+                    asth_available, asth_inOrder, asth_actualValue,
+                    asth_bidPrice, asth_askPrice, asth_bidSize, asth_askSize,
+                    asth_spread, asth_pricePrecision, asth_ticketCount,
+                    asth_lastPriceWeight, asth_lastPriceCount, asth_hide,
+                    changed_by, changed_cnt, changed_time
+                FROM assets_history
+                WHERE asth_bidPrice > 0 AND asth_askPrice > 0
+            """
+            
+            if since_timestamp:
+                # Format timestamp properly for MySQL
+                if isinstance(since_timestamp, str):
+                    query += f" AND changed_time > '{since_timestamp}'"
+                else:
+                    query += f" AND changed_time > '{since_timestamp.strftime('%Y-%m-%d %H:%M:%S')}'"
+            
+            query += " ORDER BY changed_time ASC LIMIT %s"  # ASC to get oldest first
+            
+            df = pd.read_sql(query, self.connection, params=[limit])
+            
+            if len(df) == 0:
+                return None
+            
+            # Sort by time ascending
+            if 'changed_time' in df.columns:
+                df['changed_time'] = pd.to_datetime(df['changed_time'])
+                df = df.sort_values('changed_time').reset_index(drop=True)
+            
+            return df
+            
+        except Error as e:
+            print(f"Query error: {e}")
+            return None
+    
+    def get_current_assets(self):
+        """Get current assets snapshot."""
+        if not self.connection or not self.connection.is_connected():
+            if not self.connect():
+                return None
+        
+        try:
+            query = """
+                SELECT 
+                    ast_id, ast_symbol, ast_market, ast_symbolValue,
+                    ast_changedPercentage, ast_symbolValue_USD, ast_symbolValue_BTC,
+                    ast_available, ast_inOrder, ast_actualValue,
+                    ast_bidPrice, ast_askPrice, ast_bidSize, ast_askSize,
+                    ast_spread, ast_pricePrecision, ast_ticketCount,
+                    ast_lastPriceWeight, ast_lastPriceCount, ast_hide,
+                    changed_by, changed_cnt, changed_time
+                FROM assets
+                WHERE ast_bidPrice > 0 AND ast_askPrice > 0
+                ORDER BY changed_time DESC
+            """
+            
+            df = pd.read_sql(query, self.connection)
+            
+            # Rename to match history format (ast_* -> asth_*)
+            rename_map = {
+                'ast_bidPrice': 'asth_bidPrice',
+                'ast_askPrice': 'asth_askPrice',
+                'ast_bidSize': 'asth_bidSize',
+                'ast_askSize': 'asth_askSize',
+                'ast_ticketCount': 'asth_ticketCount',
+                'ast_lastPriceWeight': 'asth_lastPriceWeight',
+                'ast_spread': 'asth_spread',
+                'ast_symbol': 'asth_symbol'
+            }
+            df = df.rename(columns=rename_map)
+            
+            if 'changed_time' in df.columns:
+                df['changed_time'] = pd.to_datetime(df['changed_time'])
+            
+            return df
+            
+        except Error as e:
+            print(f"Query error: {e}")
+            return None
