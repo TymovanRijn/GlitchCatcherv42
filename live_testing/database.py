@@ -13,7 +13,7 @@ class CryptoDatabase:
     """Database connection for crypto trading data."""
     
     def __init__(self, host='localhost', port=3306, database='crypto', 
-                 user='dbuser', password='dbuser_01!'):
+                 user='dbuser', password='dbuser_pw_01!'):
         """Initialize database connection."""
         self.host = host
         self.port = port
