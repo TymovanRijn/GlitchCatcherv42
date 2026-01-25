@@ -12,8 +12,8 @@ import time
 class CryptoDatabase:
     """Database connection for crypto trading data."""
     
-    def __init__(self, host='localhost', database='crypto', 
-                 user='dbuser', password='dbuser_pw_01!'):
+    def __init__(self, host='127.0.0.1', database='crypto', 
+                 user='dbuser', password='dbuser_pw_01'):
         """Initialize database connection."""
         self.host = host
         self.database = database
@@ -29,7 +29,9 @@ class CryptoDatabase:
                 host=self.host,
                 database=self.database,
                 user=self.user,
-                password=self.password
+                password=self.password,
+                autocommit=True,
+                connection_timeout=10
             )
             if self.connection.is_connected():
                 return True

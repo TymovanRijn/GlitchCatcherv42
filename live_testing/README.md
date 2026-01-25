@@ -13,11 +13,16 @@ pip install mysql-connector-python
 
 ### 2. Database Configuratie
 De scripts verbinden automatisch met:
-- Host: localhost
-- Port: 3306
+- Host: 127.0.0.1
 - Database: crypto
 - User: dbuser
-- Password: dbuser_01
+- Password: dbuser_pw_01
+
+### 3. Test Database Connectie
+```bash
+cd live_testing
+python test_db_connection.py
+```
 
 ## Gebruik
 
