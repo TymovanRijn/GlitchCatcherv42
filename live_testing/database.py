@@ -12,7 +12,7 @@ import time
 class CryptoDatabase:
     """Database connection for crypto trading data."""
     
-    def __init__(self, host='localhost', port=3306, database='crypto', 
+    def __init__(self, host='localhost', database='crypto', 
                  user='dbuser', password='dbuser_pw_01!'):
         """Initialize database connection."""
         self.host = host
@@ -28,7 +28,6 @@ class CryptoDatabase:
         try:
             self.connection = mysql.connector.connect(
                 host=self.host,
-                port=self.port,
                 database=self.database,
                 user=self.user,
                 password=self.password
