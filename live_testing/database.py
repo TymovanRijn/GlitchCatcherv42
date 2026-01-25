@@ -45,8 +45,15 @@ class CryptoDatabase:
         if self.connection and self.connection.is_connected():
             self.connection.close()
     
-    def get_latest_history(self, limit=1000, since_timestamp=None):
-        """Get latest assets_history records."""
+    def get_latest_history(self, limit=1000, since_timestamp=None, include_current=False):
+        """
+        Get latest assets_history records.
+        
+        Args:
+            limit: Maximum number of records to return
+            since_timestamp: Only get records after this timestamp
+            include_current: Also include current snapshot from assets table
+        """
         if not self.connection or not self.connection.is_connected():
             if not self.connect():
                 return None
@@ -74,10 +81,17 @@ class CryptoDatabase:
             
             query += " ORDER BY changed_time ASC LIMIT %s"  # ASC to get oldest first
             
-            df = pd.read_sql(query, self.connection, params=[limit])
+            # Use cursor to avoid pandas warning
+            cursor = self.connection.cursor(dictionary=True)
+            cursor.execute(query, (limit,))
+            rows = cursor.fetchall()
+            cursor.close()
             
-            if len(df) == 0:
+            if not rows:
                 return None
+            
+            # Convert to DataFrame
+            df = pd.DataFrame(rows)
             
             # Sort by time ascending
             if 'changed_time' in df.columns:
@@ -111,7 +125,16 @@ class CryptoDatabase:
                 ORDER BY changed_time DESC
             """
             
-            df = pd.read_sql(query, self.connection)
+            # Use cursor to avoid pandas warning
+            cursor = self.connection.cursor(dictionary=True)
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            cursor.close()
+            
+            if not rows:
+                return None
+            
+            df = pd.DataFrame(rows)
             
             # Rename to match history format (ast_* -> asth_*)
             rename_map = {
