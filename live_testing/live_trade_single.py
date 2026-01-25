@@ -22,12 +22,38 @@ YELLOW = '\033[93m'
 RESET = '\033[0m'
 BOLD = '\033[1m'
 
+def convert_to_float(df):
+    """Convert all numeric columns (including Decimal) to float."""
+    df = df.copy()
+    numeric_cols = ['asth_bidPrice', 'asth_askPrice', 'asth_bidSize', 'asth_askSize', 
+                    'asth_ticketCount', 'asth_lastPriceWeight', 'asth_spread',
+                    'asth_symbolValue', 'asth_changedPercentage', 'asth_symbolValue_USD',
+                    'asth_symbolValue_BTC', 'asth_available', 'asth_inOrder', 'asth_actualValue',
+                    'asth_pricePrecision', 'asth_lastPriceCount']
+    
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').astype(float)
+    
+    return df
+
 def create_features(df):
     """Create features from market data."""
-    features = df.copy()
+    # Convert Decimal types to float first
+    features = convert_to_float(df)
     
     if 'asth_symbol' not in features.columns:
         features['asth_symbol'] = 'UNKNOWN'
+    
+    # Ensure we have required columns
+    required_cols = ['asth_bidPrice', 'asth_askPrice', 'asth_ticketCount', 
+                     'asth_lastPriceWeight', 'asth_bidSize', 'asth_askSize']
+    for col in required_cols:
+        if col not in features.columns:
+            features[col] = 0.0
+    
+    # Fill NaN values
+    features[required_cols] = features[required_cols].fillna(0.0)
     
     features['price_momentum_5'] = features.groupby('asth_symbol')['asth_bidPrice'].pct_change(5)
     features['price_momentum_10'] = features.groupby('asth_symbol')['asth_bidPrice'].pct_change(10)
@@ -44,6 +70,14 @@ def create_features(df):
     
     features['bid_ask_ratio'] = features['asth_bidSize'] / (features['asth_askSize'] + 1e-8)
     features['order_flow_imbalance'] = (features['asth_bidSize'] - features['asth_askSize']) / (features['asth_bidSize'] + features['asth_askSize'] + 1e-8)
+    
+    # Fill NaN values in calculated features
+    feature_cols = ['price_momentum_5', 'price_momentum_10', 'volume_zscore', 
+                    'spread_pct', 'spread_abs', 'weight_change', 'weight_velocity',
+                    'bid_ask_ratio', 'order_flow_imbalance']
+    for col in feature_cols:
+        if col in features.columns:
+            features[col] = features[col].fillna(0.0)
     
     return features
 
@@ -77,56 +111,116 @@ class LiveTrader:
         if df is None or len(df) == 0:
             return
         
-        # Add to buffer (group by symbol)
-        for _, row in df.iterrows():
-            symbol = row['asth_symbol']
-            if symbol not in self.data_buffer:
-                self.data_buffer[symbol] = []
-            self.data_buffer[symbol].append(row.to_dict())
-            # Keep only last 200 rows per symbol
-            if len(self.data_buffer[symbol]) > 200:
-                self.data_buffer[symbol] = self.data_buffer[symbol][-200:]
-        
-        # Process each new row
-        for _, row in df.iterrows():
-            symbol = row['asth_symbol']
+        try:
+            # Convert to float first to avoid Decimal issues
+            df = convert_to_float(df)
             
-            # Get buffer for this symbol
-            if symbol not in self.data_buffer or len(self.data_buffer[symbol]) < 50:
-                continue  # Need at least 50 rows for features
+            # Ensure required columns exist
+            if 'asth_symbol' not in df.columns:
+                return
             
-            # Create DataFrame from buffer
-            symbol_df = pd.DataFrame(self.data_buffer[symbol])
-            symbol_df = symbol_df.sort_values('changed_time').reset_index(drop=True)
+            # Filter out invalid data
+            df = df[df['asth_bidPrice'] > 0]
+            df = df[df['asth_askPrice'] > 0]
+            df = df[df['asth_ticketCount'] > 5]  # Minimum liquidity
             
-            # Create features
-            features = create_features(symbol_df)
-            if len(features) == 0:
-                continue
+            if len(df) == 0:
+                return
             
-            # Get latest row with features
-            latest_features = features.iloc[-1:]
-            latest_features = latest_features[self.feature_cols + ['asth_symbol', 'asth_bidPrice', 'asth_askPrice', 'changed_time']].dropna()
+            # Add to buffer (group by symbol)
+            for _, row in df.iterrows():
+                try:
+                    symbol = str(row['asth_symbol']) if pd.notna(row['asth_symbol']) else 'UNKNOWN'
+                    if symbol == 'UNKNOWN' or symbol == '':
+                        continue
+                    
+                    if symbol not in self.data_buffer:
+                        self.data_buffer[symbol] = []
+                    
+                    # Convert row to dict and ensure all values are serializable
+                    row_dict = {}
+                    for key, value in row.items():
+                        if pd.isna(value):
+                            row_dict[key] = None
+                        else:
+                            row_dict[key] = float(value) if isinstance(value, (int, float)) else value
+                    
+                    self.data_buffer[symbol].append(row_dict)
+                    # Keep only last 200 rows per symbol
+                    if len(self.data_buffer[symbol]) > 200:
+                        self.data_buffer[symbol] = self.data_buffer[symbol][-200:]
+                except Exception as e:
+                    continue  # Skip problematic rows
             
-            if len(latest_features) == 0:
-                continue
-            
-            # Get prediction
-            X = latest_features[self.feature_cols].values
-            if len(X) == 0:
-                continue
-                
-            prob = self.model.predict_proba(X)[0, 1]
-            mid_price = (row['asth_bidPrice'] + row['asth_askPrice']) / 2
-            timestamp = pd.to_datetime(row['changed_time'])
-            
-            # Check existing positions
-            if symbol in self.positions:
-                self._update_position(symbol, mid_price, prob, timestamp)
-            
-            # Check for new entry
-            if symbol not in self.positions and prob >= self.entry_threshold:
-                self._enter_position(symbol, mid_price, prob, timestamp)
+            # Process each new row
+            for _, row in df.iterrows():
+                try:
+                    symbol = str(row['asth_symbol']) if pd.notna(row['asth_symbol']) else 'UNKNOWN'
+                    if symbol == 'UNKNOWN' or symbol == '':
+                        continue
+                    
+                    # Get buffer for this symbol
+                    if symbol not in self.data_buffer or len(self.data_buffer[symbol]) < 50:
+                        continue  # Need at least 50 rows for features
+                    
+                    # Create DataFrame from buffer
+                    symbol_df = pd.DataFrame(self.data_buffer[symbol])
+                    if len(symbol_df) == 0:
+                        continue
+                    
+                    # Sort by time
+                    if 'changed_time' in symbol_df.columns:
+                        symbol_df['changed_time'] = pd.to_datetime(symbol_df['changed_time'], errors='coerce')
+                        symbol_df = symbol_df.sort_values('changed_time').reset_index(drop=True)
+                    
+                    # Create features
+                    features = create_features(symbol_df)
+                    if len(features) == 0:
+                        continue
+                    
+                    # Get latest row with features
+                    latest_features = features.iloc[-1:]
+                    
+                    # Check if we have all required feature columns
+                    missing_cols = [col for col in self.feature_cols if col not in latest_features.columns]
+                    if missing_cols:
+                        continue
+                    
+                    latest_features = latest_features[self.feature_cols + ['asth_symbol', 'asth_bidPrice', 'asth_askPrice', 'changed_time']].dropna(subset=self.feature_cols)
+                    
+                    if len(latest_features) == 0:
+                        continue
+                    
+                    # Get prediction
+                    X = latest_features[self.feature_cols].values
+                    if len(X) == 0 or X.shape[1] != len(self.feature_cols):
+                        continue
+                    
+                    prob = self.model.predict_proba(X)[0, 1]
+                    
+                    # Get price from current row (already converted to float)
+                    bid_price = float(row['asth_bidPrice'])
+                    ask_price = float(row['asth_askPrice'])
+                    mid_price = (bid_price + ask_price) / 2.0
+                    
+                    timestamp = pd.to_datetime(row['changed_time'], errors='coerce')
+                    if pd.isna(timestamp):
+                        timestamp = datetime.now()
+                    
+                    # Check existing positions
+                    if symbol in self.positions:
+                        self._update_position(symbol, mid_price, prob, timestamp)
+                    
+                    # Check for new entry
+                    if symbol not in self.positions and prob >= self.entry_threshold:
+                        self._enter_position(symbol, mid_price, prob, timestamp)
+                        
+                except Exception as e:
+                    continue  # Skip problematic rows
+                    
+        except Exception as e:
+            # Log error but don't crash
+            pass
     
     def _enter_position(self, symbol, price, probability, timestamp):
         """Enter a new position."""

@@ -93,9 +93,20 @@ class CryptoDatabase:
             # Convert to DataFrame
             df = pd.DataFrame(rows)
             
+            # Convert numeric columns to float (MySQL Decimal -> float)
+            numeric_cols = ['asth_bidPrice', 'asth_askPrice', 'asth_bidSize', 'asth_askSize', 
+                            'asth_ticketCount', 'asth_lastPriceWeight', 'asth_spread',
+                            'asth_symbolValue', 'asth_changedPercentage', 'asth_symbolValue_USD',
+                            'asth_symbolValue_BTC', 'asth_available', 'asth_inOrder', 'asth_actualValue',
+                            'asth_pricePrecision', 'asth_lastPriceCount']
+            
+            for col in numeric_cols:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').astype(float)
+            
             # Sort by time ascending
             if 'changed_time' in df.columns:
-                df['changed_time'] = pd.to_datetime(df['changed_time'])
+                df['changed_time'] = pd.to_datetime(df['changed_time'], errors='coerce')
                 df = df.sort_values('changed_time').reset_index(drop=True)
             
             return df
@@ -149,8 +160,19 @@ class CryptoDatabase:
             }
             df = df.rename(columns=rename_map)
             
+            # Convert numeric columns to float
+            numeric_cols = ['asth_bidPrice', 'asth_askPrice', 'asth_bidSize', 'asth_askSize', 
+                            'asth_ticketCount', 'asth_lastPriceWeight', 'asth_spread',
+                            'ast_symbolValue', 'ast_changedPercentage', 'ast_symbolValue_USD',
+                            'ast_symbolValue_BTC', 'ast_available', 'ast_inOrder', 'ast_actualValue',
+                            'ast_pricePrecision', 'ast_lastPriceCount']
+            
+            for col in numeric_cols:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').astype(float)
+            
             if 'changed_time' in df.columns:
-                df['changed_time'] = pd.to_datetime(df['changed_time'])
+                df['changed_time'] = pd.to_datetime(df['changed_time'], errors='coerce')
             
             return df
             
