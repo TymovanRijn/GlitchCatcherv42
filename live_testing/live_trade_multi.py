@@ -85,7 +85,7 @@ class LiveTraderMulti:
     """Live trading engine with multi-task model."""
     
     def __init__(self, model_path, detection_threshold=0.7, persistence_threshold=0.5, 
-                 profit_target=0.01, stop_loss=0.005, max_positions=5):
+                 profit_target=0.02, stop_loss=0.005, max_positions=5):
         """Initialize live trader."""
         # Load models
         model_data = joblib.load(model_path)
@@ -348,9 +348,9 @@ def main():
     print("=" * 40)
     
     # Initialize
-    model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models/glitchcatcher_model.pkl')
+    model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models/model_v2_multi.pkl')
     trader = LiveTraderMulti(model_path, detection_threshold=0.7, persistence_threshold=0.5, 
-                            profit_target=0.01, stop_loss=0.005, max_positions=5)
+                            profit_target=0.02, stop_loss=0.005, max_positions=5)
     
     # Connect to database
     db = CryptoDatabase()

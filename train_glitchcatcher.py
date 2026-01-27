@@ -115,7 +115,7 @@ def train_glitchcatcher_model():
     
     # Load data
     print("\n📊 Loading cryptocurrency market data...")
-    df = pd.read_csv('assets_history_cleaned.csv', nrows=1000000)  # More data for better model
+    df = pd.read_csv('assets_history_cleaned_v2.csv', nrows=1300000)  # More data for better model
     df = df[df['asth_bidPrice'] > 0].copy()
     df = df.sort_values(['asth_symbol', 'changed_time']).reset_index(drop=True)
     
@@ -364,7 +364,7 @@ def predict_on_data(model_detection, model_persistence, feature_cols, nrows=5000
     print("🔮 MULTI-TASK PREDICTIONS ON NEW DATA")
     print(f"{'='*60}")
     
-    df = pd.read_csv('assets_history_cleaned.csv', nrows=nrows)
+    df = pd.read_csv('assets_history_cleaned_v2.csv', nrows=nrows)
     df = df[df['asth_bidPrice'] > 0].copy()
     df = df.sort_values(['asth_symbol', 'changed_time']).reset_index(drop=True)
     

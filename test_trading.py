@@ -290,7 +290,7 @@ def main():
     # Load multi-task models
     print("\n📦 Loading multi-task models...")
     try:
-        model_data = joblib.load('models/glitchcatcher_model.pkl')
+        model_data = joblib.load('models/model_v2_multi.pkl')
         
         # Check if multi-task model
         if model_data.get('multi_task', False):
@@ -326,7 +326,7 @@ def main():
     print("\n📊 Loading test data...")
     # Load from middle of file to ensure different data than training
     # Training uses first 1M rows, so we use rows 300k-350k
-    df_all = pd.read_csv('assets_history_cleaned.csv', nrows=350000)
+    df_all = pd.read_csv('assets_history_cleaned_v2.csv', nrows=350000)
     df = df_all.iloc[300000:].copy()  # Take last 50k rows from this chunk
     df = df[df['asth_bidPrice'] > 0].copy()
     df = df.sort_values(['asth_symbol', 'changed_time']).reset_index(drop=True)
@@ -351,7 +351,7 @@ def main():
         df,
         detection_threshold=0.7,    # 70% detection probability
         persistence_threshold=0.5,   # 50% persistence probability (both must agree)
-        profit_target=0.01,          # 1.0% profit target
+        profit_target=0.02,          # 1.0% profit target
         stop_loss=0.005,             # 0.5% stop loss
         max_hold_ticks=30,           # Max 30 ticks
         use_trailing_stop=True       # Use trailing stop
