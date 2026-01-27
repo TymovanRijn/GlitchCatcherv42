@@ -191,7 +191,7 @@ class LiveTraderGeneral:
     """General live trading engine that works with both multi-task and single-task models."""
     
     def __init__(self, model_info, detection_threshold=0.7, persistence_threshold=0.5, 
-                 profit_target=0.01, stop_loss=0.005, max_positions=5):
+                 profit_target=0.02, stop_loss=0.005, max_positions=5):
         """Initialize live trader with model info."""
         self.model_info = model_info
         self.model_type = model_info['type']
@@ -483,7 +483,7 @@ def main():
         model_info,
         detection_threshold=0.7,
         persistence_threshold=0.5,
-        profit_target=0.01,
+        profit_target=0.02,
         stop_loss=0.005,
         max_positions=5
     )
