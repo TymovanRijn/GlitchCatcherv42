@@ -311,11 +311,33 @@ def train_glitchcatcher_model():
     print("\n💾 Saving multi-task models...")
     os.makedirs('models', exist_ok=True)
     
+    # Get model name from user
+    print("\n📝 Model Naming:")
+    default_name = 'glitchcatcher_model'
+    model_name = input(f"Enter model name (default: {default_name}): ").strip()
+    
+    if not model_name:
+        model_name = default_name
+    
+    # Ensure .pkl extension
+    if not model_name.endswith('.pkl'):
+        model_name += '.pkl'
+    
+    model_path = os.path.join('models', model_name)
+    
+    # Check if file exists and ask for confirmation
+    if os.path.exists(model_path):
+        overwrite = input(f"⚠️  Model '{model_name}' already exists. Overwrite? (y/N): ").strip().lower()
+        if overwrite != 'y':
+            print("   ❌ Save cancelled. Model not saved.")
+            return model_detection, model_persistence, feature_cols, per_test_metrics
+    
     model_data = {
         'model_detection': model_detection,      # Detects anomalies
         'model_persistence': model_persistence,   # Predicts persistence
         'feature_cols': feature_cols,
         'training_date': datetime.now().isoformat(),
+        'model_name': model_name,
         'n_features': len(feature_cols),
         'n_train_samples': len(X_train),
         'n_val_samples': len(X_val),
@@ -327,10 +349,9 @@ def train_glitchcatcher_model():
         'multi_task': True
     }
     
-    model_path = 'models/glitchcatcher_model.pkl'
     joblib.dump(model_data, model_path)
     
-    print(f"   ✅ Models saved to: {model_path}")
+    print(f"\n   ✅ Models saved to: {model_path}")
     print(f"   📈 Detection Test Accuracy: {det_test_metrics['accuracy']*100:.2f}%")
     print(f"   📈 Persistence Test Accuracy: {per_test_metrics['accuracy']*100:.2f}%")
     print(f"   📈 Persistence Test F1-Score: {per_test_metrics['f1']:.4f}")
@@ -403,12 +424,12 @@ if __name__ == "__main__":
     print(f"\n{'='*60}")
     print("✅ MULTI-TASK TRAINING COMPLETE!")
     print(f"{'='*60}")
-    print(f"\n💡 Models saved to: models/glitchcatcher_model.pkl")
+    # Note: model name is already printed in train_glitchcatcher_model()
     print(f"📊 Persistence Test Accuracy: {test_metrics['accuracy']*100:.2f}%")
     print(f"📊 Persistence Test F1-Score: {test_metrics['f1']:.4f}")
     print(f"\nTo load models later:")
     print(f"  import joblib")
-    print(f"  data = joblib.load('models/glitchcatcher_model.pkl')")
+    print(f"  data = joblib.load('models/<your_model_name>.pkl')")
     print(f"  model_detection = data['model_detection']")
     print(f"  model_persistence = data['model_persistence']")
     print(f"  feature_cols = data['feature_cols']")
