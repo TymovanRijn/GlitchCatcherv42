@@ -187,6 +187,111 @@ def select_model():
             print(f"\n{RED}Interrupted by user.{RESET}")
             return None
 
+def get_trading_parameters():
+    """Get trading parameters from user input."""
+    print(f"\n{BOLD}{CYAN}{'='*60}")
+    print("⚙️  TRADING PARAMETERS")
+    print(f"{'='*60}{RESET}\n")
+    
+    # Get profit target
+    while True:
+        try:
+            profit_input = input(f"{BOLD}Profit Target (default: 0.02 = 2%): {RESET}").strip()
+            if not profit_input:
+                profit_target = 0.02
+                break
+            profit_target = float(profit_input)
+            if 0 < profit_target <= 1:
+                break
+            else:
+                print(f"{RED}Please enter a value between 0 and 1 (e.g., 0.02 for 2%){RESET}")
+        except ValueError:
+            print(f"{RED}Invalid input. Please enter a decimal number (e.g., 0.02 for 2%){RESET}")
+        except KeyboardInterrupt:
+            print(f"\n{RED}Interrupted by user.{RESET}")
+            return None
+    
+    # Get stop loss (optional, with default)
+    while True:
+        try:
+            stop_input = input(f"{BOLD}Stop Loss (default: 0.005 = 0.5%): {RESET}").strip()
+            if not stop_input:
+                stop_loss = 0.005
+                break
+            stop_loss = float(stop_input)
+            if 0 < stop_loss <= 1:
+                break
+            else:
+                print(f"{RED}Please enter a value between 0 and 1 (e.g., 0.005 for 0.5%){RESET}")
+        except ValueError:
+            print(f"{RED}Invalid input. Please enter a decimal number (e.g., 0.005 for 0.5%){RESET}")
+        except KeyboardInterrupt:
+            print(f"\n{RED}Interrupted by user.{RESET}")
+            return None
+    
+    # Get detection threshold (optional, with default)
+    while True:
+        try:
+            det_input = input(f"{BOLD}Detection Threshold (default: 0.7 = 70%): {RESET}").strip()
+            if not det_input:
+                detection_threshold = 0.7
+                break
+            detection_threshold = float(det_input)
+            if 0 < detection_threshold <= 1:
+                break
+            else:
+                print(f"{RED}Please enter a value between 0 and 1 (e.g., 0.7 for 70%){RESET}")
+        except ValueError:
+            print(f"{RED}Invalid input. Please enter a decimal number (e.g., 0.7 for 70%){RESET}")
+        except KeyboardInterrupt:
+            print(f"\n{RED}Interrupted by user.{RESET}")
+            return None
+    
+    # Get persistence threshold (optional, with default)
+    while True:
+        try:
+            per_input = input(f"{BOLD}Persistence Threshold (default: 0.5 = 50%): {RESET}").strip()
+            if not per_input:
+                persistence_threshold = 0.5
+                break
+            persistence_threshold = float(per_input)
+            if 0 < persistence_threshold <= 1:
+                break
+            else:
+                print(f"{RED}Please enter a value between 0 and 1 (e.g., 0.5 for 50%){RESET}")
+        except ValueError:
+            print(f"{RED}Invalid input. Please enter a decimal number (e.g., 0.5 for 50%){RESET}")
+        except KeyboardInterrupt:
+            print(f"\n{RED}Interrupted by user.{RESET}")
+            return None
+    
+    # Get max positions (optional, with default)
+    while True:
+        try:
+            max_input = input(f"{BOLD}Max Positions (default: 5): {RESET}").strip()
+            if not max_input:
+                max_positions = 5
+                break
+            max_positions = int(max_input)
+            if 1 <= max_positions <= 20:
+                break
+            else:
+                print(f"{RED}Please enter a number between 1 and 20{RESET}")
+        except ValueError:
+            print(f"{RED}Invalid input. Please enter a whole number{RESET}")
+        except KeyboardInterrupt:
+            print(f"\n{RED}Interrupted by user.{RESET}")
+            return None
+    
+    print()
+    return {
+        'profit_target': profit_target,
+        'stop_loss': stop_loss,
+        'detection_threshold': detection_threshold,
+        'persistence_threshold': persistence_threshold,
+        'max_positions': max_positions
+    }
+
 class LiveTraderGeneral:
     """General live trading engine that works with both multi-task and single-task models."""
     
@@ -223,11 +328,17 @@ class LiveTraderGeneral:
         # Data buffer
         self.data_buffer = {}
         
-        # Display model info
+        # Display model info and trading parameters
         print(f"{BOLD}{CYAN}{'='*60}")
         print(f"🤖 RUNNING MODEL: {self.model_name}")
         print(f"   Type: {self.model_type.replace('_', ' ').title()}")
         print(f"   Features: {len(self.feature_cols)}")
+        print(f"\n📊 TRADING PARAMETERS:")
+        print(f"   Profit Target: {self.profit_target*100:.2f}%")
+        print(f"   Stop Loss: {self.stop_loss*100:.2f}%")
+        print(f"   Detection Threshold: {self.detection_threshold*100:.0f}%")
+        print(f"   Persistence Threshold: {self.persistence_threshold*100:.0f}%")
+        print(f"   Max Positions: {self.max_positions}")
         print(f"{'='*60}{RESET}\n")
     
     def process_market_data(self, df):
@@ -478,14 +589,20 @@ def main():
         print(f"{RED}No model selected. Exiting.{RESET}")
         return
     
+    # Get trading parameters
+    trading_params = get_trading_parameters()
+    if trading_params is None:
+        print(f"{RED}No trading parameters selected. Exiting.{RESET}")
+        return
+    
     # Initialize trader
     trader = LiveTraderGeneral(
         model_info,
-        detection_threshold=0.7,
-        persistence_threshold=0.5,
-        profit_target=0.02,
-        stop_loss=0.005,
-        max_positions=5
+        detection_threshold=trading_params['detection_threshold'],
+        persistence_threshold=trading_params['persistence_threshold'],
+        profit_target=trading_params['profit_target'],
+        stop_loss=trading_params['stop_loss'],
+        max_positions=trading_params['max_positions']
     )
     
     # Connect to database

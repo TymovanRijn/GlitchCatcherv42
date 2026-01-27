@@ -41,7 +41,7 @@ def create_features(df):
 
 def simulate_trading(model_detection, model_persistence, feature_cols, df, 
                     detection_threshold=0.7, persistence_threshold=0.5, 
-                    profit_target=0.01, stop_loss=0.005, max_hold_ticks=30, use_trailing_stop=True):
+                    profit_target=0.04, stop_loss=0.005, max_hold_ticks=30, use_trailing_stop=True):
     """
     Simuleer trading met multi-task models.
     
