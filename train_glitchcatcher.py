@@ -323,9 +323,10 @@ def train_glitchcatcher_model(csv_path='assets_history_cleaned_v2.csv', recent_d
     print(f"   - Use Persistence Model to filter for signals that last (high precision)")
     print(f"   - Combined: Enter only if BOTH models agree (detection high AND persistence high)")
     
-    # Save models with metadata
-    print("\n💾 Saving multi-task models...")
-    os.makedirs('models', exist_ok=True)
+    # Ensure we use absolute path for models directory
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    models_dir = os.path.join(project_root, 'models')
+    os.makedirs(models_dir, exist_ok=True)
     
     # Get model name from user (or use override)
     if model_name_override:
@@ -340,7 +341,7 @@ def train_glitchcatcher_model(csv_path='assets_history_cleaned_v2.csv', recent_d
         if not model_name.endswith('.pkl'):
             model_name += '.pkl'
     
-    model_path = os.path.join('models', model_name)
+    model_path = os.path.join(models_dir, model_name)
     
     # Check if file exists and ask for confirmation (skip if override)
     if os.path.exists(model_path) and not model_name_override:
@@ -381,7 +382,15 @@ def predict_on_data(model_detection, model_persistence, feature_cols, nrows=5000
     print("🔮 MULTI-TASK PREDICTIONS ON NEW DATA")
     print(f"{'='*60}")
     
-    df = pd.read_csv('assets_history_cleaned_v2.csv', nrows=nrows)
+    # Ensure absolute path for data
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    csv_path = os.path.join(project_root, 'assets_history_cleaned_v2.csv')
+    
+    if not os.path.exists(csv_path):
+        print(f"⚠️  CSV file not found at: {csv_path}")
+        return None, None
+        
+    df = pd.read_csv(csv_path, nrows=nrows)
     df = df[df['asth_bidPrice'] > 0].copy()
     df = df.sort_values(['asth_symbol', 'changed_time']).reset_index(drop=True)
     
