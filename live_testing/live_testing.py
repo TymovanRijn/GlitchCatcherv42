@@ -13,9 +13,13 @@ import pandas as pd
 import numpy as np
 import joblib
 import time
-from datetime import datetime
+import threading
+from queue import Queue
+from datetime import datetime, timedelta
 from pathlib import Path
-from database import CryptoDatabase
+from live_testing.database import CryptoDatabase
+from extract_live_data import fetch_all_history, clean_dataframe
+from train_glitchcatcher import train_glitchcatcher_model
 
 # ANSI colors for terminal
 GREEN = '\033[92m'
@@ -577,6 +581,116 @@ class LiveTraderGeneral:
         if len(self.positions) > 0:
             print(f"Open positions: {', '.join(self.positions.keys())}")
 
+    def update_model(self, model_info):
+        """Hot-swap the running model with a new one."""
+        print(f"\n{BOLD}{MAGENTA}🔄 HOT-SWAPPING MODEL...{RESET}")
+        self.model_info = model_info
+        self.model_type = model_info['type']
+        self.model_name = model_info['name']
+        
+        if self.model_type == 'multi_task':
+            self.model_detection = model_info['model_detection']
+            self.model_persistence = model_info['model_persistence']
+        else:
+            self.model = model_info['model']
+            
+        self.feature_cols = model_info['feature_cols']
+        
+        print(f"{BOLD}{GREEN}✅ Model successfully updated to: {self.model_name}{RESET}")
+        print(f"   Positions and balance preserved. Continuing trading...\n")
+
+def auto_retrain_flow(current_model_name, result_queue):
+    """Automatic extraction and retraining flow - designed to run in a thread."""
+    print(f"\n{BOLD}{MAGENTA}{'='*60}")
+    print("🔄 BACKGROUND AUTOMATIC DAILY RETRAINING STARTED")
+    print(f"{'='*60}{RESET}\n")
+    
+    # Create a fresh DB connection for the thread to be thread-safe
+    db_thread = CryptoDatabase()
+    if not db_thread.connect():
+        print(f"{RED}❌ Background thread failed to connect to database.{RESET}")
+        result_queue.put(None)
+        return
+
+    try:
+        # 1. Extract last 3 days
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        temp_csv = os.path.join(project_root, 'assets_history_auto_retrain.csv')
+        print(f"⏳ [Background] Step 1/3: Extracting last 3 days of data...")
+        
+        all_dataframes = []
+        batch_size = 100000
+        offset = 0
+        
+        # Get cutoff time (3 days ago)
+        cutoff_time = datetime.now() - timedelta(days=3)
+        cutoff_str = cutoff_time.strftime('%Y-%m-%d %H:%M:%S')
+        
+        while True:
+            query = f"""
+                SELECT 
+                    asth_id, asth_symbol, asth_market, asth_symbolValue,
+                    asth_changedPercentage, asth_symbolValue_USD, asth_symbolValue_BTC,
+                    asth_available, asth_inOrder, asth_actualValue,
+                    asth_bidPrice, asth_askPrice, asth_bidSize, asth_askSize,
+                    asth_spread, asth_pricePrecision, asth_ticketCount,
+                    asth_lastPriceWeight, asth_lastPriceCount, asth_hide,
+                    changed_by, changed_cnt, changed_time
+                FROM assets_history
+                WHERE asth_bidPrice > 0 AND asth_askPrice > 0 AND changed_time >= '{cutoff_str}'
+                ORDER BY changed_time ASC
+                LIMIT %s OFFSET %s
+            """
+            
+            cursor = db_thread.connection.cursor(dictionary=True)
+            cursor.execute(query, (batch_size, offset))
+            rows = cursor.fetchall()
+            cursor.close()
+            
+            if not rows:
+                break
+                
+            df_batch = pd.DataFrame(rows)
+            all_dataframes.append(df_batch)
+            if len(df_batch) < batch_size:
+                break
+            offset += batch_size
+            
+        if not all_dataframes:
+            print(f"{RED}❌ [Background] No data found for the last 3 days. Skipping.{RESET}")
+            db_thread.disconnect()
+            result_queue.put(None)
+            return
+            
+        df = pd.concat(all_dataframes, ignore_index=True)
+        print(f"   [Background] Extracted {len(df):,} rows.")
+        
+        # 2. Clean data
+        print(f"⏳ [Background] Step 2/3: Cleaning data...")
+        cleaned_df = clean_dataframe(df)
+        cleaned_df.to_csv(temp_csv, index=False)
+        
+        # 3. Train model
+        print(f"⏳ [Background] Step 3/3: Training new model...")
+        new_model_name = f"auto_model_{datetime.now().strftime('%Y%m%d_%H%M')}.pkl"
+        
+        train_glitchcatcher_model(
+            csv_path=temp_csv,
+            recent_days=3,
+            model_name_override=new_model_name
+        )
+        
+        print(f"\n{BOLD}{GREEN}✅ [Background] Automatic retraining complete!{RESET}")
+        result_queue.put(new_model_name)
+        
+    except Exception as e:
+        print(f"{RED}❌ [Background] Error during automatic retraining: {e}{RESET}")
+        import traceback
+        traceback.print_exc()
+        result_queue.put(None)
+    finally:
+        db_thread.disconnect()
+
 def main():
     """Main live trading loop."""
     print(f"{BOLD}{CYAN}{'='*60}")
@@ -617,11 +731,41 @@ def main():
     print(f"\n{BOLD}{CYAN}{'='*60}{RESET}\n")
     
     last_timestamp = None
+    last_retrain_time = datetime.now()
+    retrain_interval = timedelta(hours=24)
+    retrain_queue = Queue()
+    retrain_thread = None
     iteration = 0
     
     try:
         while True:
             iteration += 1
+            
+            # Check if it's time to trigger background retrain
+            if datetime.now() - last_retrain_time >= retrain_interval and (retrain_thread is None or not retrain_thread.is_alive()):
+                print(f"\n{BOLD}{YELLOW}🕒 Scheduled 24h retrain triggered (Running in background)...{RESET}")
+                retrain_thread = threading.Thread(
+                    target=auto_retrain_flow, 
+                    args=(trader.model_name, retrain_queue),
+                    daemon=True
+                )
+                retrain_thread.start()
+                # Update last_retrain_time now so we don't start multiple threads
+                last_retrain_time = datetime.now()
+            
+            # Check if a new model is ready from the background thread
+            if not retrain_queue.empty():
+                new_model_file = retrain_queue.get()
+                if new_model_file:
+                    try:
+                        new_model_info = load_model(new_model_file)
+                        trader.update_model(new_model_info)
+                    except Exception as e:
+                        print(f"{RED}❌ Failed to load new background auto-model: {e}{RESET}")
+                else:
+                    print(f"{YELLOW}⚠️  Background auto-retrain failed, continuing with current model.{RESET}")
+                    # Try again in 1 hour instead of waiting another 24h
+                    last_retrain_time = datetime.now() - timedelta(hours=23)
             
             df = db.get_latest_history(limit=100, since_timestamp=last_timestamp)
             

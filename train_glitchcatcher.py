@@ -13,7 +13,7 @@ from sklearn.metrics import (
     roc_auc_score, confusion_matrix, classification_report
 )
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 def create_features(df):
     """Create professional features from market microstructure data."""
@@ -107,17 +107,33 @@ def evaluate_model(y_true, y_pred, y_proba, dataset_name="Dataset"):
         'true_positives': tp
     }
 
-def train_glitchcatcher_model():
-    """Train GlitchCatcher model with comprehensive evaluation."""
+def train_glitchcatcher_model(csv_path='assets_history_cleaned_v2.csv', recent_days=None,
+                              max_rows=2000000, model_name_override=None):
+    """
+    Train GlitchCatcher model with comprehensive evaluation.
+    
+    Args:
+        csv_path: Path to cleaned CSV data.
+        recent_days: If set, train only on the last N days of data (adapts to current regime).
+        max_rows: Maximum rows to load from CSV (to avoid memory issues).
+        model_name_override: If set, use this name instead of prompting (e.g. for retrain_recent.py).
+    """
     print("="*60)
     print("🚀 GLITCHCATCHER v4.2 - MODEL TRAINING")
     print("="*60)
     
     # Load data
     print("\n📊 Loading cryptocurrency market data...")
-    df = pd.read_csv('assets_history_cleaned_v2.csv', nrows=1300000)  # More data for better model
+    df = pd.read_csv(csv_path, nrows=max_rows)
     df = df[df['asth_bidPrice'] > 0].copy()
+    df['changed_time'] = pd.to_datetime(df['changed_time'], errors='coerce')
+    df = df.dropna(subset=['changed_time'])
     df = df.sort_values(['asth_symbol', 'changed_time']).reset_index(drop=True)
+    
+    if recent_days is not None and recent_days > 0:
+        cutoff = df['changed_time'].max() - timedelta(days=recent_days)
+        df = df[df['changed_time'] >= cutoff].copy().reset_index(drop=True)
+        print(f"   📅 Using last {recent_days} days only (from {cutoff.date()} to {df['changed_time'].max().date()})")
     
     print(f"   Loaded: {len(df):,} rows")
     print(f"   Symbols: {df['asth_symbol'].nunique()} unique assets")
@@ -311,22 +327,23 @@ def train_glitchcatcher_model():
     print("\n💾 Saving multi-task models...")
     os.makedirs('models', exist_ok=True)
     
-    # Get model name from user
-    print("\n📝 Model Naming:")
-    default_name = 'glitchcatcher_model'
-    model_name = input(f"Enter model name (default: {default_name}): ").strip()
-    
-    if not model_name:
-        model_name = default_name
-    
-    # Ensure .pkl extension
-    if not model_name.endswith('.pkl'):
-        model_name += '.pkl'
+    # Get model name from user (or use override)
+    if model_name_override:
+        model_name = model_name_override if model_name_override.endswith('.pkl') else model_name_override + '.pkl'
+        print(f"\n📝 Model name: {model_name}")
+    else:
+        print("\n📝 Model Naming:")
+        default_name = 'glitchcatcher_model'
+        model_name = input(f"Enter model name (default: {default_name}): ").strip()
+        if not model_name:
+            model_name = default_name
+        if not model_name.endswith('.pkl'):
+            model_name += '.pkl'
     
     model_path = os.path.join('models', model_name)
     
-    # Check if file exists and ask for confirmation
-    if os.path.exists(model_path):
+    # Check if file exists and ask for confirmation (skip if override)
+    if os.path.exists(model_path) and not model_name_override:
         overwrite = input(f"⚠️  Model '{model_name}' already exists. Overwrite? (y/N): ").strip().lower()
         if overwrite != 'y':
             print("   ❌ Save cancelled. Model not saved.")
