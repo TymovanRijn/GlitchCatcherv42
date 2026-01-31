@@ -699,22 +699,40 @@ def auto_retrain_flow(current_model_name, result_queue):
 def main():
     """Main live trading loop."""
     print(f"{BOLD}{CYAN}{'='*60}")
-    print("🚀 GLITCHCATCHER - GENERAL LIVE TESTING")
+    print("🚀 GLITCHCATCHER - AUTONOMOUS LIVE TRADER")
     print(f"{'='*60}{RESET}\n")
     
-    # Select model interactively
-    model_info = select_model()
-    if model_info is None:
-        print(f"{RED}No model selected. Exiting.{RESET}")
+    # Connect to database first
+    db = CryptoDatabase()
+    if not db.connect():
+        print(f"{RED}Failed to connect to database{RESET}")
         return
-    
+    print(f"{GREEN}✅ Connected to database{RESET}")
+
     # Get trading parameters
     trading_params = get_trading_parameters()
     if trading_params is None:
         print(f"{RED}No trading parameters selected. Exiting.{RESET}")
         return
     
-    # Initialize trader
+    # 1. INITIAL TRAINING (Blocking at startup)
+    print(f"\n{BOLD}{MAGENTA}🏗️  PREPARING INITIAL MODEL (Last 3 days)...{RESET}")
+    init_queue = Queue()
+    # We run the flow once blocking to get started
+    auto_retrain_flow("initial", init_queue)
+    initial_model_file = init_queue.get()
+    
+    if not initial_model_file:
+        print(f"{RED}❌ Initial training failed. Check your database data.{RESET}")
+        return
+        
+    try:
+        model_info = load_model(initial_model_file)
+    except Exception as e:
+        print(f"{RED}❌ Failed to load initial model: {e}{RESET}")
+        return
+
+    # Initialize trader with the fresh model
     trader = LiveTraderGeneral(
         model_info,
         detection_threshold=trading_params['detection_threshold'],
@@ -724,13 +742,6 @@ def main():
         max_positions=trading_params['max_positions']
     )
     
-    # Connect to database
-    db = CryptoDatabase()
-    if not db.connect():
-        print(f"{RED}Failed to connect to database{RESET}")
-        return
-    
-    print(f"{GREEN}✅ Connected to database{RESET}")
     print(f"Monitoring assets_history for new data...")
     print(f"Starting balance: $10,000.00")
     print(f"\n{BOLD}{CYAN}{'='*60}{RESET}\n")
