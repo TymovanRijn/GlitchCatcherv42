@@ -7,8 +7,6 @@ Supports both multi-task and single-task models.
 
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import pandas as pd
 import numpy as np
 import joblib
@@ -17,6 +15,13 @@ import threading
 from queue import Queue
 from datetime import datetime, timedelta
 from pathlib import Path
+
+# Add project root to sys.path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# Correct imports using project root
 from live_testing.database import CryptoDatabase
 from extract_live_data import fetch_all_history, clean_dataframe
 from train_glitchcatcher import train_glitchcatcher_model
